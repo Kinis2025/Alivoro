@@ -24,16 +24,18 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     const { prompt, duration, ratio } = req.body;
 
     // Izvēlētais runway ratio un izmērs
-    const validRatios = {
-      landscape: { ratio: '1280:720', width: 1280, height: 720 },
-      portrait: { ratio: '720:1280', width: 720, height: 1280 },
-    };
+const validRatios = {
+  "1280:720": { width: 1280, height: 720 },
+  "720:1280": { width: 720, height: 1280 },
+};
 
-    if (!validRatios[ratio]) {
-      return res.status(400).json({ error: 'Invalid ratio selected.' });
-    }
+if (!validRatios[ratio]) {
+  return res.status(400).json({ error: 'Invalid ratio selected.' });
+}
 
-    const { width, height, ratio: runwayRatio } = validRatios[ratio];
+const { width, height } = validRatios[ratio];
+const runwayRatio = ratio; // tagad runwayRatio vienkārši ir tā pati vērtība
+
 
     // Sagatavo attēlu (resize ar fonu)
     const resizedImageBuffer = await sharp(req.file.buffer)
