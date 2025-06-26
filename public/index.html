@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alivoro – Bring Your Drawing to Life (Gen-4)</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      padding: 20px;
+    }
+    input[type="text"], input[type="number"], textarea {
+      display: block;
+      margin-bottom: 10px;
+      width: 100%;
+      max-width: 400px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Alivoro – Bring Your Drawing to Life (Gen-4)</h1>
+
+  <form id="form">
+    <label>
+      Runway API Key:
+      <input type="text" id="apikey" placeholder="key_..." required>
+    </label>
+
+    <label>
+      Upload Drawing:
+      <input type="file" id="imageInput" accept="image/*" required>
+    </label>
+
+    <label>
+      Prompt (e.g., A realistic rabbit hopping in a field):
+      <textarea id="prompt" rows="2" required></textarea>
+    </label>
+
+    <label>
+      Duration (seconds):
+      <input type="number" id="duration" value="5" min="5" max="10">
+    </label>
+
+    <button type="submit">Generate Video</button>
+  </form>
+
+  <div id="result"></div>
+
+  <script src="main.js"></script>
+</body>
+</html>
