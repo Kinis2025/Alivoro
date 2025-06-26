@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import multer from 'multer';
 import fetch from 'node-fetch';
 import FormData from 'form-data';
+import sharp from 'sharp';
 
 dotenv.config();
 
@@ -26,10 +27,26 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: 'Missing parameters' });
     }
 
-    // Convert image buffer to base64 data URI
+    // Izgūstam attēla izmērus un pārbaudām malu attiecību
+    const metadata = await sharp(imageBuffer).metadata();
+    const aspectRatio = metadata.width / metadata.height;
+
+    if (aspectRatio < 0.5 || aspectRatio > 2) {
+      return res.status(400).json({
+        error: `Invalid aspect ratio: ${aspectRatio.toFixed(3)}. Must be between 0.5 and 2.`
+      });
+    }
+
+    // Konvertē uz base64 data URI
     const base64Image = imageBuffer.toString('base64');
     const mimeType = req.file.mimetype;
     const dataUri = `data:${mimeType};base64,${base64Image}`;
+
+    // Aprēķina piemērotu attiecību formātā 'W:H'
+    let ratio = '1:1';
+    if (aspectRatio > 1.5) ratio = '16:9';
+    else if (aspectRatio < 0.67) ratio = '9:16';
+    else ratio = '4:3';
 
     const response = await fetch('https://api.dev.runwayml.com/v1/image_to_video', {
       method: 'POST',
@@ -42,7 +59,7 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
         model: 'gen4_turbo',
         promptText: prompt,
         duration: parseInt(duration),
-        ratio: '1280:720',
+        ratio,
         promptImage: dataUri,
         contentModeration: { publicFigureThreshold: 'auto' }
       })
