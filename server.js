@@ -1,64 +1,99 @@
 import express from 'express';
-import multer from 'multer';
 import cors from 'cors';
-import fetch from 'node-fetch';
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
+import FormData from 'form-data';
 
 dotenv.config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
-app.use(express.json());
-const upload = multer();
+app.use(express.json({ limit: '50mb' })); // lai var apstrādāt liela izmēra base64 attēlus
 
-// API maršruts
-app.post('/api/generate', upload.single('image'), async (req, res) => {
+// Helper funkcija: nogaida ms milisekundes
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+app.post('/api/generate', async (req, res) => {
   try {
-    const { promptText, duration } = req.body;
-    const imageBuffer = req.file?.buffer;
+    const { promptText, duration, promptImage } = req.body;
 
-    if (!promptText || !imageBuffer) {
-      return res.status(400).json({ error: 'Missing prompt or image.' });
+    // Validācija
+    if (!promptText || !duration || !promptImage) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const dataUri = `data:${req.file.mimetype};base64,${imageBuffer.toString('base64')}`;
+    // Validē, vai attēls ir data URI
+    const matches = promptImage.match(/^data:(image\/\w+);base64,(.+)$/);
+    if (!matches) {
+      return res.status(400).json({ error: 'Invalid image format' });
+    }
 
-    const response = await fetch('https://api.dev.runwayml.com/v1/image_to_video', {
+    const imageBuffer = Buffer.from(matches[2], 'base64');
+
+    // Izveido multipart form-data pieprasījumu
+    const form = new FormData();
+    form.append('promptImage', imageBuffer, { filename: 'image.png', contentType: matches[1] });
+    form.append('model', 'gen4_turbo');
+    form.append('promptText', promptText);
+    form.append('duration', duration);
+    form.append('ratio', '1280:720'); // izvēlēts viens no gen4 atbalstītajiem
+
+    // Sūta POST pieprasījumu uz Runway
+    const createResponse = await fetch('https://api.dev.runwayml.com/v1/image_to_video', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${process.env.RUNWAY_API_KEY}`,
-        'X-Runway-Version': '2024-11-06'
+        Authorization: `Bearer ${process.env.RUNWAY_API_KEY}`,
+        'X-Runway-Version': '2024-11-06',
+        ...form.getHeaders()
       },
-      body: JSON.stringify({
-        promptImage: dataUri,
-        promptText,
-        duration: parseInt(duration) || 5,
-        model: 'gen4_turbo',
-        ratio: '1280:720',
-        contentModeration: {
-          publicFigureThreshold: 'auto'
-        }
-      })
+      body: form
     });
 
-    if (!response.ok) {
-      const err = await response.text();
-      return res.status(500).json({ error: 'Runway API error', details: err });
+    if (!createResponse.ok) {
+      const errorText = await createResponse.text();
+      return res.status(500).json({ error: 'Failed to create task', details: errorText });
     }
 
-    const result = await response.json();
-    res.json(result);
+    const createData = await createResponse.json();
+    const taskId = createData.id;
 
-  } catch (err) {
-    console.error('Error generating video:', err);
-    res.status(500).json({ error: 'Server error' });
+    // Polling: ik pēc 5s pārbauda statusu
+    let videoUrl = null;
+    for (let i = 0; i < 12; i++) {
+      await delay(5000);
+
+      const checkResponse = await fetch(`https://api.dev.runwayml.com/v1/tasks/${taskId}`, {
+        headers: {
+          Authorization: `Bearer ${process.env.RUNWAY_API_KEY}`,
+          'X-Runway-Version': '2024-11-06'
+        }
+      });
+
+      const statusData = await checkResponse.json();
+      if (statusData.status === 'SUCCEEDED' && statusData.output?.videoUri) {
+        videoUrl = statusData.output.videoUri;
+        break;
+      } else if (statusData.status === 'FAILED') {
+        return res.status(500).json({ error: 'Video generation failed', details: statusData });
+      }
+    }
+
+    if (!videoUrl) {
+      return res.status(504).json({ error: 'Video generation timed out' });
+    }
+
+    res.json({ videoUrl });
+
+  } catch (error) {
+    console.error('Server error:', error);
+    res.status(500).json({ error: 'Internal server error', details: error.message });
   }
 });
 
-app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
