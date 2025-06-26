@@ -19,11 +19,17 @@ app.use(express.static('public'));
 
 app.post('/api/generate', upload.single('image'), async (req, res) => {
   try {
-    const { prompt, duration, promptImage } = req.body;
+    const { prompt, duration } = req.body;
+    const imageBuffer = req.file?.buffer;
 
-    if (!prompt || !duration || !promptImage) {
+    if (!prompt || !duration || !imageBuffer) {
       return res.status(400).json({ error: 'Missing parameters' });
     }
+
+    // Convert image buffer to base64 data URI
+    const base64Image = imageBuffer.toString('base64');
+    const mimeType = req.file.mimetype;
+    const dataUri = `data:${mimeType};base64,${base64Image}`;
 
     const response = await fetch('https://api.dev.runwayml.com/v1/image_to_video', {
       method: 'POST',
@@ -37,7 +43,7 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
         promptText: prompt,
         duration: parseInt(duration),
         ratio: '1280:720',
-        promptImage: promptImage,
+        promptImage: dataUri,
         contentModeration: { publicFigureThreshold: 'auto' }
       })
     });
@@ -50,15 +56,12 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     }
 
     const taskId = data.id;
-
-    // Poll task status
     let attempts = 0;
     const maxAttempts = 20;
     let videoUrl = null;
 
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 5000));
-
       const statusResponse = await fetch(`https://api.dev.runwayml.com/v1/tasks/${taskId}`, {
         headers: {
           'Authorization': `Bearer ${RUNWAY_API_KEY}`,
@@ -82,7 +85,7 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
       return res.status(408).json({ error: 'Video generation timed out' });
     }
 
-    res.json({ videoUrl });
+    res.json({ video_url: videoUrl });
   } catch (err) {
     console.error('Server error:', err);
     res.status(500).json({ error: 'Internal server error' });
