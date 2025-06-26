@@ -82,6 +82,30 @@ app.post('/api/generate', upload.single('image'), async (req, res) => {
     res.status(500).json({ error: 'Internal server error.' });
   }
 });
+app.get('/api/task/:id', async (req, res) => {
+  const taskId = req.params.id;
+
+  try {
+    const response = await fetch(`https://api.dev.runwayml.com/v1/tasks/${taskId}`, {
+      headers: {
+        Authorization: `Bearer ${process.env.RUNWAY_API_KEY}`,
+        'X-Runway-Version': '2024-11-06',
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error('Error fetching task:', data);
+      return res.status(500).json({ error: data.error || 'Runway task fetch error' });
+    }
+
+    res.json(data);
+  } catch (err) {
+    console.error('Fetch task error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
